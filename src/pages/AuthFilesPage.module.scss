@@ -437,7 +437,6 @@
   text-transform: capitalize;
 }
 
-// 单个认证文件卡片
 .fileCard {
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
@@ -525,7 +524,6 @@
   border-color: var(--failure-badge-border, #fca5a5);
 }
 
-// 状态监测栏
 .statusBar {
   display: flex;
   align-items: center;
@@ -605,6 +603,10 @@
   padding-top: $spacing-sm;
 }
 
+.statusButton {
+  min-width: 64px;
+}
+
 .iconButton:global(.btn.btn-sm) {
   width: 34px;
   height: 34px;
@@ -630,7 +632,18 @@
   align-items: center;
 }
 
-// 分页
+.statEnabled {
+  background-color: rgba(16, 185, 129, 0.14);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.statDisabled {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
 .pagination {
   display: flex;
   justify-content: center;
@@ -649,7 +662,6 @@
   border-radius: $radius-md;
 }
 
-// OAuth 排除列表
 .excludedList {
   display: flex;
   flex-direction: column;

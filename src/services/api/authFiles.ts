@@ -1,7 +1,3 @@
-/**
- * 认证文件与 OAuth 排除模型相关 API
- */
-
 import { apiClient } from './client';
 import type { AuthFilesResponse } from '@/types/authFile';
 import type { OAuthModelMappingEntry } from '@/types';
@@ -56,7 +52,9 @@ export const authFilesApi = {
 
   deleteAll: () => apiClient.delete('/auth-files', { params: { all: true } }),
 
-  // OAuth 排除模型
+  updateStatus: (name: string, disabled: boolean) =>
+    apiClient.patch('/auth-files/status', { name, disabled }),
+
   async getOauthExcludedModels(): Promise<Record<string, string[]>> {
     const data = await apiClient.get('/oauth-excluded-models');
     return normalizeOauthExcludedModels(data);
@@ -71,7 +69,6 @@ export const authFilesApi = {
   replaceOauthExcludedModels: (map: Record<string, string[]>) =>
     apiClient.put('/oauth-excluded-models', normalizeOauthExcludedModels(map)),
 
-  // OAuth 模型映射
   async getOauthModelMappings(): Promise<Record<string, OAuthModelMappingEntry[]>> {
     const data = await apiClient.get('/oauth-model-mappings');
     const payload = (data && (data['oauth-model-mappings'] ?? data.items ?? data)) as any;
@@ -102,7 +99,6 @@ export const authFilesApi = {
   deleteOauthModelMappings: (channel: string) =>
     apiClient.delete(`/oauth-model-mappings?channel=${encodeURIComponent(channel)}`),
 
-  // 获取认证凭证支持的模型
   async getModelsForAuthFile(name: string): Promise<{ id: string; display_name?: string; type?: string; owned_by?: string }[]> {
     const data = await apiClient.get(`/auth-files/models?name=${encodeURIComponent(name)}`);
     return (data && Array.isArray(data['models'])) ? data['models'] : [];

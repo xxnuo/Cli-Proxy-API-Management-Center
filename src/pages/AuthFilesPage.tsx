@@ -23,7 +23,6 @@ type ThemeColors = { bg: string; text: string; border?: string };
 type TypeColorSet = { light: ThemeColors; dark?: ThemeColors };
 type ResolvedTheme = 'light' | 'dark';
 
-// 标签类型颜色配置（对齐重构前 styles.css 的 file-type-badge 颜色）
 const TYPE_COLORS: Record<string, TypeColorSet> = {
   qwen: {
     light: { bg: '#e8f5e9', text: '#2e7d32' },
@@ -101,7 +100,6 @@ const buildEmptyMappingEntry = (): OAuthModelMappingEntry => ({
   alias: '',
   fork: false
 });
-// 标准化 auth_index 值（与 usage.ts 中的 normalizeAuthIndex 保持一致）
 function normalizeAuthIndexValue(value: unknown): string | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value.toString();
@@ -120,7 +118,6 @@ function isRuntimeOnlyAuthFile(file: AuthFileItem): boolean {
   return false;
 }
 
-// 解析认证文件的统计数据
 function resolveAuthFileStats(
   file: AuthFileItem,
   stats: KeyStats
@@ -128,16 +125,13 @@ function resolveAuthFileStats(
   const defaultStats: KeyStatBucket = { success: 0, failure: 0 };
   const rawFileName = file?.name || '';
 
-  // 兼容 auth_index 和 authIndex 两种字段名（API 返回的是 auth_index）
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
   const authIndexKey = normalizeAuthIndexValue(rawAuthIndex);
 
-  // 尝试根据 authIndex 匹配
   if (authIndexKey && stats.byAuthIndex?.[authIndexKey]) {
     return stats.byAuthIndex[authIndexKey];
   }
 
-  // 尝试根据 source (文件名) 匹配
   if (rawFileName && stats.bySource?.[rawFileName]) {
     const fromName = stats.bySource[rawFileName];
     if (fromName.success > 0 || fromName.failure > 0) {
@@ -145,7 +139,6 @@ function resolveAuthFileStats(
     }
   }
 
-  // 尝试去掉扩展名后匹配
   if (rawFileName) {
     const nameWithoutExt = rawFileName.replace(/\.[^/.]+$/, '');
     if (nameWithoutExt && nameWithoutExt !== rawFileName) {
@@ -175,14 +168,13 @@ export function AuthFilesPage() {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [keyStats, setKeyStats] = useState<KeyStats>({ bySource: {}, byAuthIndex: {} });
   const [usageDetails, setUsageDetails] = useState<UsageDetail[]>([]);
 
-  // 详情弹窗相关
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<AuthFileItem | null>(null);
 
-  // 模型列表弹窗相关
   const [modelsModalOpen, setModelsModalOpen] = useState(false);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsList, setModelsList] = useState<{ id: string; display_name?: string; type?: string }[]>([]);
@@ -190,14 +182,12 @@ export function AuthFilesPage() {
   const [modelsFileType, setModelsFileType] = useState('');
   const [modelsError, setModelsError] = useState<'unsupported' | null>(null);
 
-  // OAuth 排除模型相关
   const [excluded, setExcluded] = useState<Record<string, string[]>>({});
   const [excludedError, setExcludedError] = useState<'unsupported' | null>(null);
   const [excludedModalOpen, setExcludedModalOpen] = useState(false);
   const [excludedForm, setExcludedForm] = useState<ExcludedFormState>({ provider: '', modelsText: '' });
   const [savingExcluded, setSavingExcluded] = useState(false);
 
-  // OAuth 模型映射相关
   const [modelMappings, setModelMappings] = useState<Record<string, OAuthModelMappingEntry[]>>({});
   const [modelMappingsError, setModelMappingsError] = useState<'unsupported' | null>(null);
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
@@ -223,7 +213,6 @@ export function AuthFilesPage() {
     setPage(1);
   };
 
-  // 格式化修改时间
   const formatModified = (item: AuthFileItem): string => {
     const raw = item['modtime'] ?? item.modified;
     if (!raw) return '-';
@@ -235,7 +224,6 @@ export function AuthFilesPage() {
     return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
   };
 
-  // 加载文件列表
   const loadFiles = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -250,9 +238,7 @@ export function AuthFilesPage() {
     }
   }, [t]);
 
-  // 加载 key 统计和 usage 明细（API 层已有60秒超时）
   const loadKeyStats = useCallback(async () => {
-    // 防止重复请求
     if (loadingKeyStatsRef.current) return;
     loadingKeyStatsRef.current = true;
     try {
@@ -494,7 +480,6 @@ export function AuthFilesPage() {
     event.target.value = '';
   };
 
-  // 删除单个文件
   const handleDelete = async (name: string) => {
     if (!window.confirm(`${t('auth_files.delete_confirm')} "${name}" ?`)) return;
     setDeleting(name);
@@ -510,7 +495,29 @@ export function AuthFilesPage() {
     }
   };
 
-  // 删除全部（根据筛选类型）
+  const handleToggleStatus = async (item: AuthFileItem) => {
+    if (!item?.name) return;
+    const nextDisabled = !item.disabled;
+    setUpdatingStatus(item.name);
+    try {
+      await authFilesApi.updateStatus(item.name, nextDisabled);
+      setFiles((prev) =>
+        prev.map((file) =>
+          file.name === item.name ? { ...file, disabled: nextDisabled } : file
+        )
+      );
+      showNotification(
+        nextDisabled ? t('auth_files.disable_success') : t('auth_files.enable_success'),
+        'success'
+      );
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '';
+      showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
+
   const handleDeleteAll = async () => {
     const isFiltered = filter !== 'all';
     const typeLabel = isFiltered ? getTypeLabel(filter) : t('auth_files.filter_all');
@@ -523,12 +530,10 @@ export function AuthFilesPage() {
     setDeletingAll(true);
     try {
       if (!isFiltered) {
-        // 删除全部
         await authFilesApi.deleteAll();
         showNotification(t('auth_files.delete_all_success'), 'success');
         setFiles((prev) => prev.filter((file) => isRuntimeOnlyAuthFile(file)));
       } else {
-        // 删除筛选类型的文件
         const filesToDelete = files.filter(
           (f) => f.type === filter && !isRuntimeOnlyAuthFile(f)
         );
@@ -576,7 +581,6 @@ export function AuthFilesPage() {
     }
   };
 
-  // 下载文件
   const handleDownload = async (name: string) => {
     try {
       const response = await apiClient.getRaw(`/auth-files/download?name=${encodeURIComponent(name)}`, {
@@ -596,13 +600,11 @@ export function AuthFilesPage() {
     }
   };
 
-  // 显示详情弹窗
   const showDetails = (file: AuthFileItem) => {
     setSelectedFile(file);
     setDetailModalOpen(true);
   };
 
-  // 显示模型列表
   const showModels = async (item: AuthFileItem) => {
     setModelsFileName(item.name);
     setModelsFileType(item.type || '');
@@ -614,7 +616,6 @@ export function AuthFilesPage() {
       const models = await authFilesApi.getModelsForAuthFile(item.name);
       setModelsList(models);
     } catch (err) {
-      // 检测是否是 API 不支持的错误 (404 或特定错误消息)
       const errorMessage = err instanceof Error ? err.message : '';
       if (errorMessage.includes('404') || errorMessage.includes('not found') || errorMessage.includes('Not Found')) {
         setModelsError('unsupported');
@@ -626,7 +627,6 @@ export function AuthFilesPage() {
     }
   };
 
-  // 检查模型是否被 OAuth 排除
   const isModelExcluded = (modelId: string, providerType: string): boolean => {
     const providerKey = normalizeProviderKey(providerType);
     const excludedModels = excluded[providerKey] || excluded[providerType] || [];
@@ -857,7 +857,6 @@ export function AuthFilesPage() {
     </div>
   );
 
-  // 预计算所有认证文件的状态栏数据（避免每次渲染重复计算）
   const statusBarCache = useMemo(() => {
     const cache = new Map<string, ReturnType<typeof calculateStatusBarData>>();
 
@@ -866,7 +865,6 @@ export function AuthFilesPage() {
       const authIndexKey = normalizeAuthIndexValue(rawAuthIndex);
 
       if (authIndexKey) {
-        // 过滤出属于该认证文件的 usage 明细
         const filteredDetails = usageDetails.filter((detail) => {
           const detailAuthIndex = normalizeAuthIndexValue(detail.auth_index);
           return detailAuthIndex !== null && detailAuthIndex === authIndexKey;
@@ -878,9 +876,7 @@ export function AuthFilesPage() {
     return cache;
   }, [usageDetails, files]);
 
-  // 渲染状态监测栏
   const renderStatusBar = (item: AuthFileItem) => {
-    // 认证文件使用 authIndex 来匹配 usage 数据
     const rawAuthIndex = item['auth_index'] ?? item.authIndex;
     const authIndexKey = normalizeAuthIndexValue(rawAuthIndex);
 
@@ -916,13 +912,14 @@ export function AuthFilesPage() {
     );
   };
 
-  // 渲染单个认证文件卡片
   const renderFileCard = (item: AuthFileItem) => {
     const fileStats = resolveAuthFileStats(item, keyStats);
     const isRuntimeOnly = isRuntimeOnlyAuthFile(item);
     const isAistudio = (item.type || '').toLowerCase() === 'aistudio';
     const showModelsButton = !isRuntimeOnly || isAistudio;
     const typeColor = getTypeColor(item.type || 'unknown');
+    const isDisabled = !!item.disabled;
+    const isUpdating = updatingStatus === item.name;
 
     return (
       <div key={item.name} className={styles.fileCard}>
@@ -952,12 +949,25 @@ export function AuthFilesPage() {
           <span className={`${styles.statPill} ${styles.statFailure}`}>
             {t('stats.failure')}: {fileStats.failure}
           </span>
+          <span className={`${styles.statPill} ${isDisabled ? styles.statDisabled : styles.statEnabled}`}>
+            {isDisabled ? t('auth_files.status_disabled') : t('auth_files.status_enabled')}
+          </span>
         </div>
 
-        {/* 状态监测栏 */}
         {renderStatusBar(item)}
 
         <div className={styles.cardActions}>
+          {!isRuntimeOnly && (
+            <Button
+              variant={isDisabled ? 'secondary' : 'danger'}
+              size="sm"
+              onClick={() => handleToggleStatus(item)}
+              disabled={disableControls || isUpdating}
+              className={styles.statusButton}
+            >
+              {isUpdating ? <LoadingSpinner size={14} /> : isDisabled ? t('auth_files.enable_button') : t('auth_files.disable_button')}
+            </Button>
+          )}
           {showModelsButton && (
             <Button
               variant="secondary"

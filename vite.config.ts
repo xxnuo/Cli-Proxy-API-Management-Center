@@ -74,5 +74,24 @@ export default defineConfig({
         manualChunks: undefined
       }
     }
-  }
+  },
+  server: {
+    proxy: {
+      '/v': {
+        target: 'http://localhost:8317',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  },
+  preview: {
+    port: 4173,
+    proxy: {
+      '/v': {
+        target: 'http://localhost:8317',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  },
 });
