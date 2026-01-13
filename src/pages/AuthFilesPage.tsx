@@ -17,7 +17,6 @@ import type { AuthFileItem, OAuthModelMappingEntry } from '@/types';
 import type { KeyStats, KeyStatBucket, UsageDetail } from '@/utils/usage';
 import { collectUsageDetails, calculateStatusBarData } from '@/utils/usage';
 import { formatFileSize } from '@/utils/format';
-import { generateId } from '@/utils/helpers';
 import styles from './AuthFilesPage.module.scss';
 
 type ThemeColors = { bg: string; text: string; border?: string };
@@ -92,15 +91,12 @@ interface ExcludedFormState {
   modelsText: string;
 }
 
-type OAuthModelMappingFormEntry = OAuthModelMappingEntry & { id: string };
-
 interface ModelMappingsFormState {
   provider: string;
-  mappings: OAuthModelMappingFormEntry[];
+  mappings: OAuthModelMappingEntry[];
 }
 
-const buildEmptyMappingEntry = (): OAuthModelMappingFormEntry => ({
-  id: generateId(),
+const buildEmptyMappingEntry = (): OAuthModelMappingEntry => ({
   name: '',
   alias: '',
   fork: false
@@ -179,6 +175,7 @@ export function AuthFilesPage() {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
   const [keyStats, setKeyStats] = useState<KeyStats>({ bySource: {}, byAuthIndex: {} });
   const [usageDetails, setUsageDetails] = useState<UsageDetail[]>([]);
 
@@ -514,6 +511,31 @@ export function AuthFilesPage() {
     }
   };
 
+  const handleToggle = async (item: AuthFileItem, enabled: boolean) => {
+    const name = item.name;
+    setToggling(name);
+    const previousFiles = files;
+    const disabled = !enabled;
+
+    setFiles((prev) =>
+      prev.map((f) => (f.name === name ? { ...f, disabled } : f))
+    );
+
+    try {
+      await authFilesApi.setAuthFileDisabled({ name, disabled });
+      showNotification(
+        enabled ? t('notification.config_enabled') : t('notification.config_disabled'),
+        'success'
+      );
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '';
+      setFiles(previousFiles);
+      showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+    } finally {
+      setToggling(null);
+    }
+  };
+
   // 删除全部（根据筛选类型）
   const handleDeleteAll = async () => {
     const isFiltered = filter !== 'all';
@@ -732,12 +754,11 @@ export function AuthFilesPage() {
   };
 
   // OAuth 模型映射相关方法
-  const normalizeMappingEntries = (entries?: OAuthModelMappingEntry[]): OAuthModelMappingFormEntry[] => {
+  const normalizeMappingEntries = (entries?: OAuthModelMappingEntry[]) => {
     if (!Array.isArray(entries) || entries.length === 0) {
       return [buildEmptyMappingEntry()];
     }
     return entries.map((entry) => ({
-      id: generateId(),
       name: entry.name ?? '',
       alias: entry.alias ?? '',
       fork: Boolean(entry.fork),
@@ -928,9 +949,12 @@ export function AuthFilesPage() {
     const isAistudio = (item.type || '').toLowerCase() === 'aistudio';
     const showModelsButton = !isRuntimeOnly || isAistudio;
     const typeColor = getTypeColor(item.type || 'unknown');
+    const isDisabled = item.disabled === true;
+    const isToggling = toggling === item.name;
+    const toggleDisabled = disableControls || loading || isToggling;
 
     return (
-      <div key={item.name} className={styles.fileCard}>
+      <div key={item.name} className={`${styles.fileCard} ${isDisabled ? styles.fileCardDisabled : ''}`}>
         <div className={styles.cardHeader}>
           <span
             className={styles.typeBadge}
@@ -943,12 +967,28 @@ export function AuthFilesPage() {
             {getTypeLabel(item.type || 'unknown')}
           </span>
           <span className={styles.fileName}>{item.name}</span>
+          {!isRuntimeOnly && (
+            <div className={styles.cardToggle}>
+              <ToggleSwitch
+                label={t('ai_providers.config_toggle_label')}
+                checked={!isDisabled}
+                disabled={toggleDisabled}
+                onChange={(value) => void handleToggle(item, value)}
+              />
+            </div>
+          )}
         </div>
 
         <div className={styles.cardMeta}>
           <span>{t('auth_files.file_size')}: {item.size ? formatFileSize(item.size) : '-'}</span>
           <span>{t('auth_files.file_modified')}: {formatModified(item)}</span>
         </div>
+
+        {isDisabled && (
+          <div className="status-badge warning" style={{ marginTop: 8, marginBottom: 0 }}>
+            {t('ai_providers.config_disabled_badge')}
+          </div>
+        )}
 
         <div className={styles.cardStats}>
           <span className={`${styles.statPill} ${styles.statSuccess}`}>
@@ -1404,15 +1444,15 @@ export function AuthFilesPage() {
       >
         <div className={styles.providerField}>
           <Input
-            id="oauth-model-alias-provider"
-            list="oauth-model-alias-provider-options"
+            id="oauth-model-mappings-provider"
+            list="oauth-model-mappings-provider-options"
             label={t('oauth_model_mappings.provider_label')}
             hint={t('oauth_model_mappings.provider_hint')}
             placeholder={t('oauth_model_mappings.provider_placeholder')}
             value={mappingForm.provider}
             onChange={(e) => setMappingForm((prev) => ({ ...prev, provider: e.target.value }))}
           />
-          <datalist id="oauth-model-alias-provider-options">
+          <datalist id="oauth-model-mappings-provider-options">
             {providerOptions.map((provider) => (
               <option key={provider} value={provider} />
             ))}
@@ -1442,7 +1482,7 @@ export function AuthFilesPage() {
           <div className="header-input-list">
             {(mappingForm.mappings.length ? mappingForm.mappings : [buildEmptyMappingEntry()]).map(
               (entry, index) => (
-                <div key={entry.id} className={styles.mappingRow}>
+                <div key={`${entry.name}-${entry.alias}-${index}`} className={styles.mappingRow}>
                   <input
                     className="input"
                     placeholder={t('oauth_model_mappings.mapping_name_placeholder')}
